@@ -1,9 +1,13 @@
 """Module handle the console display formatting."""
 import logging
+from flask import g
+
+
 
 
 class CustomFormatter(logging.Formatter):
     """Class extends the logging Formatter class to support custom colour messages."""
+
 
     blue = "\x1b[34;21m"
     grey = "\x1b[38;21m"
@@ -13,8 +17,10 @@ class CustomFormatter(logging.Formatter):
     bold_red = "\x1b[31;1m"
     reset = "\x1b[0m"
     __format = (
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
+        "%(tenant)s - %(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d) "
     )
+    tenant = None
+
 
     FORMATS = {
         logging.DEBUG: blue + __format + reset,
@@ -23,9 +29,9 @@ class CustomFormatter(logging.Formatter):
         logging.ERROR: red + __format + reset,
         logging.CRITICAL: bold_red + __format + reset,
     }
-
     def format(self, record):
         """Returns the formatted information."""
         log_fmt = self.FORMATS.get(record.levelno)
         formatter = logging.Formatter(log_fmt)
+        record.tenant = CustomFormatter.tenant
         return formatter.format(record)

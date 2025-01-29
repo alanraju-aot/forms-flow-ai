@@ -10,6 +10,7 @@ from jose import jwt as json_web_token
 from jose.exceptions import JWTError
 
 from ..exceptions import BusinessException, ExternalError
+from .format import CustomFormatter
 
 jwt = JwtManager()  # pylint: disable=invalid-name
 
@@ -21,13 +22,17 @@ class Auth:
     def require(cls, f):
         """Validate the Bearer Token."""
 
+
         @jwt.requires_auth
         @wraps(f)
         def decorated(*args, **kwargs):
             g.authorization_header = request.headers.get("Authorization", None)
             g.token_info = g.jwt_oidc_token_info
+            CustomFormatter.tenant=g.jwt_oidc_token_info.get("tenantKey","default")
+
 
             return f(*args, **kwargs)
+
 
         return decorated
 
