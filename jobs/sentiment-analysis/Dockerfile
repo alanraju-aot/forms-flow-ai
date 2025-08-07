@@ -1,4 +1,4 @@
-FROM python:3.13.2-slim-bullseye
+FROM python:3.14.0rc1-slim-bullseye
 
 ARG SOURCE_REPO=BCDevOps
 ARG GOCROND_VERSION=0.6.2
