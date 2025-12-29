@@ -20,3 +20,4 @@ blinker<1.8.0 # latest selenium-wire have breaking changes with blinker
 nested-lookup
 setuptools
 git+https://github.com/auslin-aot/forms-flow-ai.git@feature/fwf-4530-optimize-documents-render-api--call#egg=formsflow_api_utils&subdirectory=forms-flow-api-utils
+marshmallow>=3.26.2 # not directly required, pinned by Snyk to avoid a vulnerability
