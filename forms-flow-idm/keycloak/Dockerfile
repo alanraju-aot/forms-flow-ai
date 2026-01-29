@@ -7,7 +7,7 @@ COPY idp-selector/src idp-selector/src/
 
 RUN mvn -f idp-selector/pom.xml clean package
 
-FROM alpine:latest
+FROM alpine:3.23.3
 
 WORKDIR /custom
 
