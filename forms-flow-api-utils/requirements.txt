@@ -22,3 +22,4 @@ sentry-sdk[flask]
 opentelemetry-exporter-otlp
 opentelemetry-instrumentation-flask
 opentelemetry-instrumentation-requests
+mako>=1.3.12 # not directly required, pinned by Snyk to avoid a vulnerability
