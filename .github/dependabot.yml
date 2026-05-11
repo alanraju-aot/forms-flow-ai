@@ -5,7 +5,7 @@ updates:
   # Frontend (React / Node)
   # ==============================
   - package-ecosystem: "npm"
-    directory: "/"
+    directory: "/forms-flow-web"
     target-branch: "dependabot-updates"
 
     schedule:
@@ -21,16 +21,17 @@ updates:
       - "dependabot"
 
     groups:
-      frontend-minor-patch:
-        update-types:
-          - "minor"
-          - "patch"
+      javascript-dependencies:
+        patterns:
+          - "*"
 
   # ==============================
-  # Backend Java (forms-flow-api)
+  # Backend Python (API & Documents)
   # ==============================
-  - package-ecosystem: "maven"
-    directory: "/forms-flow-api"
+  - package-ecosystem: "pip"
+    directories:
+      - "/forms-flow-api"
+      - "/forms-flow-documents"
     target-branch: "dependabot-updates"
 
     schedule:
@@ -41,13 +42,12 @@ updates:
     labels:
       - "dependencies"
       - "backend"
-      - "java"
+      - "python"
 
     groups:
-      backend-minor-patch:
-        update-types:
-          - "minor"
-          - "patch"
+      python-dependencies:
+        patterns:
+          - "*"
 
   # ==============================
   # BPM Engine (Camunda service)
