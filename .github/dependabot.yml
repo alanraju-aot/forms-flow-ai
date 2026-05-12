@@ -21,17 +21,15 @@ updates:
       - "dependabot"
 
     groups:
-      javascript-dependencies:
+      frontend-dependencies:
         patterns:
           - "*"
 
   # ==============================
-  # Backend Python (API & Documents)
+  # Backend Python (API)
   # ==============================
   - package-ecosystem: "pip"
-    directories:
-      - "/forms-flow-api"
-      - "/forms-flow-documents"
+    directory: "/forms-flow-api"
     target-branch: "dependabot-updates"
 
     schedule:
@@ -45,7 +43,29 @@ updates:
       - "python"
 
     groups:
-      python-dependencies:
+      api-dependencies:
+        patterns:
+          - "*"
+
+  # ==============================
+  # Backend Python (Documents)
+  # ==============================
+  - package-ecosystem: "pip"
+    directory: "/forms-flow-documents"
+    target-branch: "dependabot-updates"
+
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "05:40"
+
+    labels:
+      - "dependencies"
+      - "backend"
+      - "python"
+
+    groups:
+      documents-dependencies:
         patterns:
           - "*"
 
@@ -67,10 +87,9 @@ updates:
       - "bpm"
 
     groups:
-      bpm-minor-patch:
-        update-types:
-          - "minor"
-          - "patch"
+      bpm-dependencies:
+        patterns:
+          - "*"
 
   # ==============================
   # Python Analytics
@@ -89,10 +108,9 @@ updates:
       - "python"
 
     groups:
-      python-minor-patch:
-        update-types:
-          - "minor"
-          - "patch"
+      analytics-dependencies:
+        patterns:
+          - "*"
 
   # ==============================
   # Docker Images
