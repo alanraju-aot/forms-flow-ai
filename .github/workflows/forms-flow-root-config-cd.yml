@@ -16,7 +16,7 @@ defaults:
 jobs:
   build-and-push-image-to-dockerhub:
     if: github.repository == 'AOT-Technologies/forms-flow-ai'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     strategy:
       matrix:
         include:
