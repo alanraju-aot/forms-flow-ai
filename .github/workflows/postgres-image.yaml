@@ -2,7 +2,7 @@ name: Build · Scan · Push — PostgreSQL Image
 
 on:
   push:
-    branches: [master , workflow-docker-hub]
+    branches: [master , develop]
     paths:
       - "docker/postgresql/**"
       - ".github/workflows/postgres-image.yaml"
