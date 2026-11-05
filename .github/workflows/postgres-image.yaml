@@ -1,0 +1,182 @@
+name: Build · Scan · Push — PostgreSQL Image
+
+on:
+  push:
+    branches: [master , workflow-docker-hub]
+    paths:
+      - "docker/postgresql/**"
+      - ".github/workflows/postgres-image.yaml"
+
+  workflow_dispatch:
+    inputs:
+      pg_version:
+        description: "PostgreSQL version to build"
+        required: true
+        default: "16.4"
+      force_rebuild:
+        description: "Force rebuild even without code changes"
+        type: boolean
+        default: false
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: alanraju007/forms-flow-postgres
+  IMAGE_VERSION: 1.0.0
+
+jobs:
+  build-scan-push:
+    name: "Build, Scan & Push — PG ${{ matrix.pg_version }}"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write   # Upload SARIF to GitHub Security tab
+      id-token: write          # OIDC token for Cosign keyless signing
+
+    strategy:
+      fail-fast: false
+      matrix:
+        pg_version: ["16.4"]   # Extend to ["16.4", "17.0"] when PG17 is ready
+
+    steps:
+      # ── Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Build tooling ─────────────────────────────────────────────────────
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      # ── Docker Hub Authentication ─────────────────────────────────────────
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # ── Step 1: Build multi-arch ONCE and push with immutable run-number tag
+      # The run-number tag is already a final production tag (e.g. 1.0.0-42).
+      # We push ONLY this tag here — latest and sha are added after scan passes.
+      # This means: only ONE multi-arch build happens in the entire pipeline.
+      - name: Build and push (immutable run-number tag only)
+        id: build_push
+        uses: docker/build-push-action@v5
+        with:
+          context: docker/postgresql
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_VERSION }}-${{ github.run_number }}
+          build-args: |
+            PG_VERSION=${{ matrix.pg_version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+
+      # ── Step 2: Pull amd64 locally for scanning ───────────────────────────
+      # Pulling a single-arch slice of a multi-arch manifest is fast (~1 min).
+      # No rebuild — we scan the exact same layers that are now in Docker Hub.
+      - name: Pull amd64 image for scanning
+        run: |
+          docker pull --platform linux/amd64 \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_VERSION }}-${{ github.run_number }}
+          docker tag \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_VERSION }}-${{ github.run_number }} \
+            scan-target:latest
+
+      # ── Step 3: Trivy CVE scan ────────────────────────────────────────────
+      - name: Run Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: scan-target:latest
+          format: table
+          exit-code: "1"          # Fail CI on HIGH/CRITICAL CVEs
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+
+      # ── Step 4: Dockle config lint ────────────────────────────────────────
+      - name: Run Dockle Dockerfile lint
+        uses: goodwithtech/dockle-action@main
+        with:
+          image: scan-target:latest
+          exit-code: "1"
+          exit-level: WARN
+          ignore: DKL-DI-0006,CIS-DI-0010
+
+      # ── Step 5: Add remaining tags (scan-gated, metadata-only, instant) ───
+      # imagetools create just adds new manifest pointers to the existing digest.
+      # No layers are re-uploaded. This is near-instant (~5 sec per tag).
+      - name: Promote to final tags (latest + sha)
+        if: success()
+        run: |
+          # Add version tag
+          docker buildx imagetools create \
+            --tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_VERSION }}" \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_VERSION }}-${{ github.run_number }}"
+
+          # Add latest tag
+          docker buildx imagetools create \
+            --tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_VERSION }}-${{ github.run_number }}"
+
+          # Add SHA tag
+          SHA_SHORT=$(echo "${{ github.sha }}" | cut -c1-7)
+          docker buildx imagetools create \
+            --tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_VERSION }}-${SHA_SHORT}" \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_VERSION }}-${{ github.run_number }}"
+
+      # ── Step 6: Clean up run-number tag if scans failed ───────────────────
+      # If Trivy or Dockle failed, the run-number tag is in Docker Hub but unverified.
+      # Delete it so no one accidentally pulls a vulnerable image.
+      - name: Delete unverified image from Docker Hub on scan failure
+        if: failure()
+        run: |
+          # Authenticate and get JWT token from Docker Hub API
+          TOKEN=$(curl -s -H "Content-Type: application/json" -X POST \
+            -d '{"username": "${{ secrets.DOCKERHUB_USERNAME }}", "password": "${{ secrets.DOCKERHUB_TOKEN }}"}' \
+            https://hub.docker.com/v2/users/login/ | jq -r .token)
+          
+          if [ "$TOKEN" != "null" ] && [ -n "$TOKEN" ]; then
+            echo "Attempting to delete unverified tag ${{ env.IMAGE_VERSION }}-${{ github.run_number }} from Docker Hub..."
+            curl -s -X DELETE \
+              -H "Authorization: JWT $TOKEN" \
+              "https://hub.docker.com/v2/repositories/${{ env.IMAGE_NAME }}/tags/${{ env.IMAGE_VERSION }}-${{ github.run_number }}/"
+          else
+            echo "Failed to authenticate to Docker Hub API to delete unverified tag."
+          fi
+        shell: bash
+
+      # ── Step 7: Cosign image signing ──────────────────────────────────────
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image (keyless OIDC)
+        run: |
+          cosign sign --yes \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build_push.outputs.digest }}
+
+      # ── Step 8: SBOM export ───────────────────────────────────────────────
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          format: cyclonedx-json
+          output-file: sbom-forms-flow-postgres-${{ env.IMAGE_VERSION }}.cyclonedx.json
+
+      - name: Upload SBOM as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-forms-flow-postgres-${{ env.IMAGE_VERSION }}
+          path: sbom-forms-flow-postgres-${{ env.IMAGE_VERSION }}.cyclonedx.json
+          retention-days: 90
+
+      # ── Google Chat notification on failure ───────────────────────────────
+      - name: Notify Google Chat on failure
+        if: failure()
+        run: |
+          curl -X POST -H 'Content-Type: application/json' \
+          -d '{"text": "⚠️ *PostgreSQL image build FAILED* — PG ${{ matrix.pg_version }}\n*Run Details:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}' \
+          "${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}"
