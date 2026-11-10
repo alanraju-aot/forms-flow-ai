@@ -1,6 +1,6 @@
 
 # Maven build
-FROM maven:3.8.1-openjdk-17-slim AS MAVEN_TOOL_CHAIN
+FROM maven:3.9.11-eclipse-temurin-17 AS MAVEN_TOOL_CHAIN
 COPY settings-docker.xml /usr/share/maven/ref/
 WORKDIR /tmp/
 
@@ -19,6 +19,11 @@ RUN mvn -s /usr/share/maven/ref/settings-docker.xml install -P camunda
 
 
 FROM eclipse-temurin:21-jdk-jammy
+
+# Apply OS security updates (e.g. apt CVEs in the base image)
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
 
 # set label for image
 LABEL Name="formsflow"
