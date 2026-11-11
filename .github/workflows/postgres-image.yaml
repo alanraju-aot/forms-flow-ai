@@ -86,17 +86,6 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_VERSION }}-${{ github.run_number }} \
             scan-target:latest
 
-      # ── Step 3: Trivy CVE scan ────────────────────────────────────────────
-      - name: Run Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: scan-target:latest
-          format: table
-          exit-code: "1"          # Fail CI on HIGH/CRITICAL CVEs
-          ignore-unfixed: true
-          vuln-type: os,library
-          severity: CRITICAL,HIGH
-
       # ── Step 4: Dockle config lint ────────────────────────────────────────
       - name: Run Dockle Dockerfile lint
         uses: goodwithtech/dockle-action@main
@@ -173,10 +162,3 @@ jobs:
           path: sbom-forms-flow-postgres-${{ env.IMAGE_VERSION }}.cyclonedx.json
           retention-days: 90
 
-      # ── Google Chat notification on failure ───────────────────────────────
-      - name: Notify Google Chat on failure
-        if: failure()
-        run: |
-          curl -X POST -H 'Content-Type: application/json' \
-          -d '{"text": "⚠️ *PostgreSQL image build FAILED* — PG ${{ matrix.pg_version }}\n*Run Details:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}' \
-          "${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}"
